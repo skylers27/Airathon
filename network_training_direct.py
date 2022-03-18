@@ -660,3 +660,39 @@ print(r2_score(y_test, y_pred))
 
 
 
+
+dl = train[train.locs == 2]
+la = train[train.locs == 1]
+tpe = train[train.locs == 0]
+dl_test = test[test.locs == 2]
+la_test = test[test.locs == 1]
+tpe_test = test[test.locs == 0]
+
+
+city_list = [dl, la, tpe]
+
+test_city_list = [dl_test, la_test, tpe_test]
+network_list = []
+for city in city_list:
+    X_city = city[cols_to_use]
+    y_city = city.pm25
+    X_test = test[cols_to_use]
+    y_test = test.pm25
+    X_city, X_test, y_city, y_test = floatify_data(X_city, X_test, y_city, y_test)
+
+
+    scaler = preprocessing.StandardScaler().fit(X_city)
+    scaler.mean_.shape
+
+    X_city = torch.from_numpy(X_city.values).float()
+    X_test = torch.from_numpy(X_test.values).float()
+    y_city = torch.from_numpy(y_city.values).float()
+    y_test = torch.from_numpy(y_test.values).float()
+
+    y_city = torch.unsqueeze(y_city,dim=1)
+    y_test = torch.unsqueeze(y_test,dim=1)
+
+    X_city = X_city.unsqueeze(1).unsqueeze(1)
+    X_test = X_test.squeeze(1).squeeze(1)
+    t1, s1 = trained_network, specs = runNet(X_train, y_train, in_specs)
+    network_list.append(t1)
