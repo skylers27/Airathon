@@ -34,6 +34,8 @@ from nasa_main_utils import reshape_data, floatify_data
 import time
 
 
+BATCH_SIZE = 4
+NUM_EPOCHS = 5
 
 pm_md = pd.read_csv(r'C:\Users\16028\Downloads\nasa_air\starter_code\starter_code\satellite_metadata.csv',
                   parse_dates=['time_start', 'time_end'])
@@ -248,8 +250,7 @@ model.score(test[["mean_aod_x", "min_aod_x", "max_aod_x", "mean_aod_y", "min_aod
 
 
 
-BATCH_SIZE = 4
-NUM_EPOCHS = 2
+
 
 #####################################################################################
 #####################################################################################
@@ -274,6 +275,9 @@ in_specs['imputation'] = 'none'
 
 # X_train = train.drop(columns=cols_to_drop)
 # X_test = X_test.drop(columns=cols_to_drop)
+
+
+train_scaled = train[cols_to_use]
 X_train = train[cols_to_use]
 y_train = train.pm25
 X_test = test[cols_to_use]
@@ -282,8 +286,13 @@ X_train, X_test, y_train, y_test = floatify_data(X_train, X_test, y_train, y_tes
 
 
 scaler = preprocessing.StandardScaler().fit(X_train)
-scaler.mean_.shape
 
+X_train = pd.DataFrame(scaler.transform(X_train))
+X_test = pd.DataFrame(scaler.transform(X_test))
+
+    
+                          
+                          
 X_train = torch.from_numpy(X_train.values).float()
 X_test = torch.from_numpy(X_test.values).float()
 y_train = torch.from_numpy(y_train.values).float()
@@ -301,7 +310,7 @@ X_test = X_test.squeeze(1).squeeze(1)
 class Net(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(10, 500)
+        self.fc1 = nn.Linear(6, 500)
         self.fc2 = nn.Linear(500, 50)
         self.fc3 = nn.Linear(50,1)
         # self.fc1 = nn.Linear(10,300)
@@ -326,7 +335,7 @@ optimizer = optim.Adam(net.parameters(), lr=1e-4)
 X_train_temp = X_train
 y_train_temp = y_train
 
-def runNet(X_train_temp, y_train_temp, net_specs):
+def runNet(X_train_temp, y_train_temp, X_test, y_test, net_specs):
 
     start = time.time()
     running_loss = 0.0
@@ -337,7 +346,7 @@ def runNet(X_train_temp, y_train_temp, net_specs):
     
         net.train()
         for i in range(X_train_temp.shape[0]):
-            if i % 5000 == 0: print(i)
+            # if i % 5000 == 0: print(i)
             # data[i].unsqueeze(0)
             inputs = X_train_temp[i]#.unsqueeze(0).unsqueeze(0)
             #print(X_train_temp[i].unsqueeze(0).unsqueeze(0).shape)
@@ -366,21 +375,21 @@ def runNet(X_train_temp, y_train_temp, net_specs):
         y_pred = []
         for i in range(X_train_temp.shape[0]):
             y_pred.append(net(X_train_temp[i]).item())
-    print(y_pred[:10])
+    # print(y_pred[:10])
     
-    mean_absolute_error(y_train, y_pred)
-    print(mean_squared_error(y_train, y_pred, squared=False))
-    print(r2_score(y_train, y_pred))
+    # mean_absolute_error(y_train, y_pred)
+    # print(mean_squared_error(y_train, y_pred, squared=False))
+    print('Training R2: ' + str(r2_score(y_train, y_pred)))
     
     with torch.no_grad():
         net.eval()
         y_pred = []
         for i in range(X_test.shape[0]):
             y_pred.append(net(X_test[i]).item())
-    print(y_pred[:10])
-    print(mean_squared_error(y_test, y_pred, squared=False))
-    print(r2_score(y_test, y_pred))
-    net_specs['R2_train'] = round(r2_score(y_train, y_pred),2)
+    # print(y_pred[:10])
+    # print(mean_squared_error(y_test, y_pred, squared=False))
+    print('Testing R2: ' +str(r2_score(y_test, y_pred)))
+    net_specs['R2_train'] = round(r2_score(y_test, y_pred),2)
     net_specs['R2_test'] = round(r2_score(y_test, y_pred),2)
     net_specs['duration'] = round(end - start,2)/60
     net_specs['num_epochs'] = NUM_EPOCHS
@@ -388,7 +397,7 @@ def runNet(X_train_temp, y_train_temp, net_specs):
     return net, net_specs
      
 
-trained_network, specs = runNet(X_train_temp, y_train_temp, in_specs)
+trained_network, specs = runNet(X_train_temp, y_train_temp, X_test, y_test, in_specs)
 
 
 category_list = ['R2_train', 'R2_test', 'model_type', 'model_architecture', 
@@ -405,6 +414,12 @@ new_df.to_csv(r'experiment_results.csv', index=False)
 
 trained_network.fc1.out_features
 
+submission_f = pd.read_csv(r"../../submission_format.csv", parse_dates=["datetime"])
+submission_f.columns
+submission_f['day'] = submission_f['datetime'].dt.date
+aplayer = submission_f.day.value_counts()
+
+
 
 #is my net a net .double()?
 
@@ -413,19 +428,7 @@ grouped = train.groupby(['grid_id', 'day'])
 
 grouped_id = train.groupby(['grid_id'])
 
-i = 0
-for name, group in grouped_id:
-    if i < 5:
-        print(name)
-        print(group)
-        i +=1 
-
-train['s]']
-
-
-ag = pd.to_datetime(train[1]['datetime'])
-ag2 = pd.to_datetime(train['datetime']).dt.tz_localize(None) #*** THIS IS IMPORTANT, COULD LEAD TO ERRORS LATER--MIGHT WANT TO LEAVE IN TIMEZONE AWARE FORM
-ag.dt.hour.value_counts()
+# ag2 = pd.to_datetime(train['datetime']).dt.tz_localize(None) #*** THIS IS IMPORTANT, COULD LEAD TO ERRORS LATER--MIGHT WANT TO LEAVE IN TIMEZONE AWARE FORM
 
 
 # RNN
@@ -440,12 +443,6 @@ ag.dt.hour.value_counts()
 # some feature engineering
 # later:
 # attempting to bring in new data
-submission_f = pd.read_csv(r"../../submission_format.csv", parse_dates=["datetime"])
-
-submission_f.columns
-submission_f['day'] = submission_f['datetime'].dt.date
-aplayer = submission_f.day.value_counts()
-
 
 #APPROACH 1: IT SEEMS INEFFICIENT TO HAVE A 49-DIMENSIONAL MULTIVARIATE TIME SERIES
 # SO WE ENSEMBLE a grid-specific LSTM with the city-wide feedforward network
@@ -456,23 +453,19 @@ aplayer = submission_f.day.value_counts()
 # 
 
 
+# scaler = preprocessing.StandardScaler().fit(X_train)
+# scaler.mean_.shape
 
+# X_train = torch.from_numpy(X_train.values).float()
+# X_test = torch.from_numpy(X_test.values).float()
+# y_train = torch.from_numpy(y_train.values).float()
+# y_test = torch.from_numpy(y_test.values).float()
 
-scaler = preprocessing.StandardScaler().fit(X_train)
-scaler.mean_.shape
+# y_train = torch.unsqueeze(y_train,dim=1)
+# y_test = torch.unsqueeze(y_test,dim=1)
 
-X_train = torch.from_numpy(X_train.values).float()
-X_test = torch.from_numpy(X_test.values).float()
-y_train = torch.from_numpy(y_train.values).float()
-y_test = torch.from_numpy(y_test.values).float()
-
-y_train = torch.unsqueeze(y_train,dim=1)
-y_test = torch.unsqueeze(y_test,dim=1)
-
-X_train = X_train.squeeze(1)
-X_test = X_test.squeeze(1)
-
-
+# X_train = X_train.squeeze(1)
+# X_test = X_test.squeeze(1)
 
 
 
@@ -550,14 +543,8 @@ df_test =convertToSeries(test_ad, grid_chosen)
 # column_to_move = df.pop("pm25")
 # df.insert(len(df.columns), "pm25", column_to_move)
 ########################################################
-lookback = 4
-
-
-
 # n_samples, sequence_length, num_features
 # n_samples, 1
-#
-
 #################################################################################
 
 #################################################################################
@@ -587,17 +574,19 @@ y_train = torch.from_numpy(y_train).float()
 X_test= torch.from_numpy(X_test).float()
 y_test = torch.from_numpy(y_test).float()
 
+# input of shape (seq_len, batch, input_size): tensor containing the features of the input sequence.
+# X_train[0] should be 4,1,6
 
 class LSTM(nn.Module):
   
-  def __init__(self, n_features, n_classes, n_hidden=256, n_layers=3):        
+  def __init__(self, n_features, n_classes, n_hidden=400, n_layers=3):        
     super().__init__()
     self.lstm = nn.LSTM(
         input_size  = n_features,
         hidden_size = n_hidden,
         num_layers  = n_layers,
         batch_first = True,
-        dropout     = 0.75
+        dropout     = 0.5
     )                
     
     self.classifier = nn.Linear(n_hidden, n_classes)  
@@ -638,16 +627,26 @@ print("Training time: {}".format(training_time))
 
 
 training_preds = net(X_train)
+print(r2_score(y_train, training_preds.detach().numpy()))
+
+testing_preds = net(X_test)
+print(r2_score(y_test, testing_preds.detach().numpy()))
+
+# net(X_train[2])
 with torch.no_grad():
     net.eval()
     y_pred = []
     for i in range(X_train.shape[0]):
-        y_pred.append(net(X_train[i]).item())
+        print(X_train[i].unsqueeze(1).shape)
+        print(net(X_train[i].unsqueeze(1)))
+        y_pred.append(net(X_train[i].unsqueeze(1)).item())
 print(y_pred[:10])
 
 mean_absolute_error(y_train, y_pred)
 print(mean_squared_error(y_train, y_pred, squared=False))
 print(r2_score(y_train, y_pred))
+
+
 
 with torch.no_grad():
     net.eval()
@@ -661,38 +660,51 @@ print(r2_score(y_test, y_pred))
 
 
 
-dl = train[train.locs == 2]
-la = train[train.locs == 1]
-tpe = train[train.locs == 0]
-dl_test = test[test.locs == 2]
-la_test = test[test.locs == 1]
-tpe_test = test[test.locs == 0]
+la = train[train.locs == 0]
+dl = train[train.locs == 1]
+tpe = train[train.locs == 2]
+la_test = test[test.locs == 0]
+dl_test = test[test.locs == 1]
+tpe_test = test[test.locs == 2]
 
+print(la.shape[0])
+print(dl.shape[0])
+print(tpe.shape[0])
+print(la.shape[0] + dl.shape[0] + tpe.shape[0])
 
-city_list = [dl, la, tpe]
-
-test_city_list = [dl_test, la_test, tpe_test]
+city_list = [la,dl,tpe]
+test_city_list = [ la_test, dl_test, tpe_test]
 network_list = []
-for city in city_list:
-    X_city = city[cols_to_use]
-    y_city = city.pm25
-    X_test = test[cols_to_use]
-    y_test = test.pm25
-    X_city, X_test, y_city, y_test = floatify_data(X_city, X_test, y_city, y_test)
+
+net = Net()
+# net = net.double()
+print(net)
+criterion = nn.MSELoss()
+# optimizer = optim.SGD(net.parameters(), lr=1e-5, momentum=0.3)#.9 #1e-6 seemed to give better results but still diverges enough
+optimizer = optim.Adam(net.parameters(), lr=1e-4)
 
 
-    scaler = preprocessing.StandardScaler().fit(X_city)
+for city, test_city in zip(city_list, test_city_list):
+    X_train = city[cols_to_use]
+    y_train = city.pm25
+    X_test = test_city[cols_to_use]
+    y_test = test_city.pm25
+    X_train, X_test, y_train, y_test = floatify_data(X_train, X_test, y_train, y_test)
+
+
+    scaler = preprocessing.StandardScaler().fit(X_train)
     scaler.mean_.shape
 
-    X_city = torch.from_numpy(X_city.values).float()
+    X_train = torch.from_numpy(X_train.values).float()
     X_test = torch.from_numpy(X_test.values).float()
-    y_city = torch.from_numpy(y_city.values).float()
+    y_train = torch.from_numpy(y_train.values).float()
     y_test = torch.from_numpy(y_test.values).float()
 
-    y_city = torch.unsqueeze(y_city,dim=1)
+    y_train = torch.unsqueeze(y_train,dim=1)
     y_test = torch.unsqueeze(y_test,dim=1)
 
-    X_city = X_city.unsqueeze(1).unsqueeze(1)
+    X_train = X_train.unsqueeze(1).unsqueeze(1)
     X_test = X_test.squeeze(1).squeeze(1)
-    t1, s1 = trained_network, specs = runNet(X_train, y_train, in_specs)
+    t1, s1 = trained_network, specs = runNet(X_train, y_train, X_test, y_test, in_specs)
     network_list.append(t1)
+
