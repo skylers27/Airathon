@@ -29,8 +29,13 @@ from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
 from sklearn.metrics import r2_score
 
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler
+
 from nasa_main_utils import reshape_data, floatify_data
 
+
+from functools import reduce
 import time
 
 
@@ -44,15 +49,22 @@ grid_md = pd.read_csv(r'C:\Users\16028\Downloads\nasa_air\starter_code\starter_c
 
 train_dict = dict()
 val_dict = dict()
-for i in range(1,14):
-    train_dict[i] = pd.read_csv(r'C:\Users\16028\Downloads\skyler_processed_data\train' + str(i) + '.csv')
-    val_dict[i] = pd.read_csv(r'C:\Users\16028\Downloads\skyler_processed_data\val' + str(i) + '.csv')
-    
-    
+train_dict_processed = dict()
+val_dict_processed = dict()
+
 train_labels = pd.read_csv("../../train_labels.csv", parse_dates=["datetime"])
 train_labels.rename(columns={"value": "pm25"}, inplace=True)
 
 
+
+for i in range(1,14):
+    if i == 4:
+        continue
+    train_dict[i] = pd.read_csv(r'C:\Users\16028\Downloads\skyler_processed_data\train' + str(i) + '.csv')
+    val_dict[i] = pd.read_csv(r'C:\Users\16028\Downloads\skyler_processed_data\val' + str(i) + '.csv')
+    
+ 
+    
 ########################################################################################
 ################################################################################################
 
@@ -107,10 +119,37 @@ def calculate_features(
 full_data1 = calculate_features(train_dict[1], train_labels, stage="train")
 full_data2 = calculate_features(train_dict[2], train_labels, stage="train")
 
-#print(full_data1.head(3))
-#print(full_data2.head(3))
 
-full_data = pd.merge(full_data1, full_data2,  how='inner', left_on=['datetime','grid_id', 'pm25', 'day'], right_on = ['datetime','grid_id', 'pm25', 'day'])
+for i in range(1,14):
+    if (i == 4): #DROPPING 4TH BAND
+        continue
+    print(i)
+    train_dict_processed[i] = calculate_features(train_dict[i], train_labels, stage="train")
+    val_dict_processed[i] = calculate_features(val_dict[i], train_labels, stage="test")
+   
+# full_data = pd.merge(full_data1, full_data2,  how='inner', left_on=['datetime','grid_id', 'pm25', 'day'], right_on = ['datetime','grid_id', 'pm25', 'day'])
+
+all_bands = list(train_dict_processed.values())
+
+b = [0,1,2,3,4,5,7,8,9,10,11] #DROPPING THE 6TH DF (WE ALREADY DROPPED 4 ABOVE)
+all_bands_filtered = [all_bands[i] for i in b]
+
+
+
+mylist = {0: 'blue_band', 1: 'green_band', 2: 'aod_unc', 
+          3: 'column_wv', 4: 'add_qa', 5: 'aod_model', 6:'cos_sza', 
+          7: 'cos_vsa', 8:'rel_az', 9:'scatter_angle', 10: 'glint_angle'}
+
+for k,v in mylist.items():
+    all_bands_filtered[k] = all_bands_filtered[k].rename(columns={col: v + '_'+ col 
+                            for col in all_bands_filtered[k].columns if col not in ['datetime', 'grid_id', 'pm25', 'day']})
+
+    
+
+# full_data2 = pd.merge(all_bands,  how='inner', left_on=['datetime','grid_id', 'pm25', 'day'], right_on = ['datetime','grid_id', 'pm25', 'day'])
+# full_data3 = pd.concat(full_data1, full_data2,  join='inner', left_on=['datetime','grid_id', 'pm25', 'day'], right_on = ['datetime','grid_id', 'pm25', 'day'])
+
+full_data = reduce(lambda x, y: pd.merge(x, y, how='inner', on = ['datetime','grid_id', 'pm25', 'day']), all_bands_filtered)
 
 #Skyler added features: year, month, day, hour, location (0 = LA, 1 = DL, 2 = TPE)
 full_data["y"] = full_data.datetime.dt.year
@@ -130,124 +169,17 @@ for i in range(full_data.shape[0]):
         locs.append(2)
 
 full_data["locs"] = locs
-
 full_data
 
-# 2020 data will be held out for validation
-train = full_data[full_data.datetime.dt.year <= 2019].copy()
-test = full_data[full_data.datetime.dt.year > 2019].copy()
-
-# Train model on train set
-model = RandomForestRegressor()
-model.fit(train[["mean_aod_x", "min_aod_x", "max_aod_x", "mean_aod_y", "min_aod_y", "max_aod_y", "y", "m", "d", "h", "locs"]], train.pm25)
-# Compute R2 using our holdout set
-model.score(test[["mean_aod_x", "min_aod_x", "max_aod_x", "mean_aod_y", "min_aod_y", "max_aod_y", "y", "m", "d", "h", "locs"]], test.pm25)
-# Refit model on entire training set
-model.fit(full_data[["mean_aod_x", "min_aod_x", "max_aod_x", "mean_aod_y", "min_aod_y", "max_aod_y", "y", "m", "d", "h", "locs"]], full_data.pm25)
-# Identify test granule s3 paths
-test_md = pm_md[(pm_md["product"] == "maiac") & (pm_md["split"] == "test")]
-
-# Identify test grid cells
-submission_format = pd.read_csv(r"../../submission_format.csv", parse_dates=["datetime"]) #***
-# submission_format = pd.read_csv(RAW / "submission_format.csv", parse_dates=["datetime"])
-test_gc = grid_md[grid_md.index.isin(submission_format.grid_id)]
-# Process test data for each location
-locations = test_gc.location.unique()
-loc_map = {"Delhi": "dl", "Los Angeles (SoCAB)": "la", "Taipei": "tpe"}
-
-loc_dfs1 = []
-loc_dfs2 = []
 
 
-test_df1 = val_dict[1].copy()
-test_df2 = val_dict[2].copy()
-
-test_df1.head(3)
-
-# Prepare AOD features, only do once per kernel execution
-submission_df1 = calculate_features(test_df1, submission_format, stage="test")
-submission_df2 = calculate_features(test_df2, submission_format, stage="test")
-
-# Impute missing features using training set mean/max/min
-submission_df1.mean_aod.fillna(train_dict[1].value.mean(), inplace=True)
-submission_df1.min_aod.fillna(train_dict[1].value.min(), inplace=True)
-submission_df1.max_aod.fillna(train_dict[1].value.max(), inplace=True)
-submission_df1.drop(columns=["day"], inplace=True)
-
-submission_df2.mean_aod.fillna(train_dict[2].value.mean(), inplace=True)
-submission_df2.min_aod.fillna(train_dict[2].value.min(), inplace=True)
-submission_df2.max_aod.fillna(train_dict[2].value.max(), inplace=True)
-submission_df2.drop(columns=["day"], inplace=True)
-
-print(submission_df1.shape)
-print(submission_df2.shape)
-
-submission_df = pd.merge(submission_df1, submission_df2,  how='inner', left_on=['datetime','grid_id', 'value'], right_on = ['datetime','grid_id', 'value'])
-print(submission_df.shape)
-print(submission_df)
-
-#add same features as training here:
-submission_df["y"] = submission_df.datetime.dt.year
-submission_df["m"] = submission_df.datetime.dt.month
-submission_df["d"] = submission_df.datetime.dt.day
-submission_df["h"] = submission_df.datetime.dt.hour
-
-locs = []
-for i in range(submission_df.shape[0]):
-    index = grid_md.index.tolist().index(submission_df["grid_id"][i])
-    location = grid_md.location.tolist()[index]
-    if location == 'Los Angeles (SoCAB)':
-        locs.append(0)
-    if location == 'Delhi':
-        locs.append(1)
-    if location == 'Taipei':
-        locs.append(2)
-
-submission_df["locs"] = locs
-
-# Make predictions using AOD features
-submission_df["preds"] = model.predict(submission_df[["mean_aod_x", "min_aod_x", "max_aod_x", "mean_aod_y", "min_aod_y", "max_aod_y", "y", "m", "d", "h", "locs"]])
-submission = submission_df[["datetime", "grid_id", "preds"]].copy()
-submission.rename(columns={"preds": "value"}, inplace=True)
-
-# Ensure submission indices match submission format
-submission_format.set_index(["datetime", "grid_id"], inplace=True)
-submission.set_index(["datetime", "grid_id"], inplace=True)
-assert submission_format.index.equals(submission.index)
-
-submission.head(3)
-
-submission.describe()
-
-# Save submission in the correct format
-# =============================================================================
-# final_submission = pd.read_csv(RAW / "submission_format.csv")
-# final_submission["value"] = submission.reset_index().value
-# final_submission.to_csv((INTERIM / "submission.csv"), index=False)
-# 
-# =============================================================================
-final_submission = pd.read_csv(r"../../submission_format.csv")
-final_submission["value"] = submission.reset_index().value
-# final_submission.to_csv((INTERIM / "submission.csv"), index=False)
-final_submission.to_csv((r"../../submission_tutorial_1.csv"), index=False)
-
-#####################################################################################
-
-# Train model on train set
-
-cols_to_use = ["mean_aod_x", "min_aod_x", "max_aod_x", "mean_aod_y", "min_aod_y", "max_aod_y", "y", "m", "d", "h", "locs"]
-X_train = train[cols_to_use]
-y_train = train.pm25
-X_test = test[cols_to_use]
-y_test = test.pm25
-
-
-
-model = RandomForestRegressor()
-model.fit(train[["mean_aod_x", "min_aod_x", "max_aod_x", "mean_aod_y", "min_aod_y", "max_aod_y", "y", "m", "d", "h", "locs"]], train.pm25)
-model.score(test[["mean_aod_x", "min_aod_x", "max_aod_x", "mean_aod_y", "min_aod_y", "max_aod_y", "y", "m", "d", "h", "locs"]], test.pm25)
-
-
+in_specs = dict()
+in_specs['model_type'] = 'ffn'
+in_specs['model_architecture'] = '3 layers: 400, 40, 1'
+in_specs['hyperparameters'] = 'Adam, 1e-4'
+in_specs['features'] = 'full'
+in_specs['normalization'] = 'none'
+in_specs['imputation'] = 'none'
 
 
 
@@ -256,42 +188,54 @@ model.score(test[["mean_aod_x", "min_aod_x", "max_aod_x", "mean_aod_y", "min_aod
 #####################################################################################
 ##################################################################################
 
-# X_train = scaler.transform(X_train)
-# X_test = scaler.transform(X_test)
-# X_train, X_test = reshape_data(240,240,X_train, X_test)
+
+# 2020 data will be held out for validation
+train = full_data[full_data.datetime.dt.year <= 2019].copy()
+test = full_data[full_data.datetime.dt.year > 2019].copy()
+
+
+# one_hot = pd.get_dummies(train['locs'], prefix='city')
+# train = train.drop('locs',axis = 1)
+# train = train.join(one_hot)
+# one_hot = pd.get_dummies(test['locs'], prefix='city')
+# test = test.drop('locs',axis = 1)
+# test = test.join(one_hot)
 
 
 
-cols_to_use= [ "mean_aod_x", "min_aod_x", "max_aod_x", "mean_aod_y", "min_aod_y", "max_aod_y"] #"y", "m", "d", "h"]
-cols_to_drop = ["y", "m", "d", "h", "locs"]
-
-in_specs = dict()
-in_specs['model_type'] = 'ffn'
-in_specs['model_architecture'] = '3 layers: 500, 50, 1'
-in_specs['hyperparameters'] = 'Adam, 1e-4'
-in_specs['features'] = 'blue and green only'
-in_specs['normalization'] = 'none'
-in_specs['imputation'] = 'none'
-
-# X_train = train.drop(columns=cols_to_drop)
-# X_test = X_test.drop(columns=cols_to_drop)
+# cols_to_use= [ "mean_aod_x", "min_aod_x", "max_aod_x", "mean_aod_y", "min_aod_y", "max_aod_y"] #"y", "m", "d", "h"]
+cols_to_drop = ["datetime", "grid_id", "day", "pm25"]# "locs"]# "y", "m", "d", "h", "locs"]
 
 
-train_scaled = train[cols_to_use]
-X_train = train[cols_to_use]
+
+# train_scaled = train[cols_to_use]
+X_train = train.drop(columns=cols_to_drop)
+X_test = test.drop(columns=cols_to_drop)
 y_train = train.pm25
-X_test = test[cols_to_use]
 y_test = test.pm25
 X_train, X_test, y_train, y_test = floatify_data(X_train, X_test, y_train, y_test)
 
 
-scaler = preprocessing.StandardScaler().fit(X_train)
+categorical_columns = ['city_0', 'city_1', 'city_2']
+cols_to_scale = [col for col in X_train.columns if col not in categorical_columns]
 
+#SCALING
+scaler = preprocessing.StandardScaler().fit(X_train)
+scaler.mean_.shape
 X_train = pd.DataFrame(scaler.transform(X_train))
 X_test = pd.DataFrame(scaler.transform(X_test))
 
-    
-                          
+
+
+# ct = ColumnTransformer([
+#         ('ct_name', StandardScaler(), X_train.columns)
+#     ], remainder='passthrough')
+
+
+# X_train = pd.DataFrame(ct.fit_transform(X_train))
+# X_test = pd.DataFrame(ct.transform(X_test))
+
+
                           
 X_train = torch.from_numpy(X_train.values).float()
 X_test = torch.from_numpy(X_test.values).float()
@@ -307,35 +251,9 @@ X_test = X_test.squeeze(1).squeeze(1)
 
 ####################################################################################
 
-class Net(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.fc1 = nn.Linear(6, 500)
-        self.fc2 = nn.Linear(500, 50)
-        self.fc3 = nn.Linear(50,1)
-        # self.fc1 = nn.Linear(10,300)
-        # self.fc2= nn.Linear(300,100)
-        # self.fc3= nn.Linear(100,20)
-        # self.fc4 = nn.Linear(20, 1)
+# NUM_EPOCHS = 10
 
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        # x = F.relu(self.fc3(x))
-        x = self.fc3(x)
-        # x = self.fc4(x)
-        return x
-
-net = Net()
-# net = net.double()
-print(net)
-criterion = nn.MSELoss()
-# optimizer = optim.SGD(net.parameters(), lr=1e-5, momentum=0.3)#.9 #1e-6 seemed to give better results but still diverges enough
-optimizer = optim.Adam(net.parameters(), lr=1e-4)
-X_train_temp = X_train
-y_train_temp = y_train
-
-def runNet(X_train_temp, y_train_temp, X_test, y_test, net_specs):
+def runNet(net, X_train_temp, y_train_temp, X_test, y_test, net_specs):
 
     start = time.time()
     running_loss = 0.0
@@ -395,9 +313,38 @@ def runNet(X_train_temp, y_train_temp, X_test, y_test, net_specs):
     net_specs['num_epochs'] = NUM_EPOCHS
 
     return net, net_specs
-     
 
-trained_network, specs = runNet(X_train_temp, y_train_temp, X_test, y_test, in_specs)
+class Net(nn.Module):
+    def __init__(self,input_shape):
+        super().__init__()
+        self.drop = nn.Dropout(p=.25)
+        self.fc1 = nn.Linear(input_shape, 400)
+        self.fc2 = nn.Linear(400, 50)
+        self.fc3 = nn.Linear(50,1)
+        # self.fc1 = nn.Linear(10,300)
+        # self.fc2= nn.Linear(300,100)
+        # self.fc3= nn.Linear(100,20)
+        # self.fc4 = nn.Linear(20, 1)
+
+    def forward(self, x):
+        x = self.drop(F.relu(self.fc1(x)))
+        x = self.drop(F.relu(self.fc2(x)))
+        x = self.fc3(x)
+        # x = F.relu(self.fc3(x))
+        # x = self.fc4(x)
+        return x
+
+network = Net(input_shape = X_train.shape[-1])
+print(network)
+criterion = nn.MSELoss()
+# optimizer = optim.SGD(net.parameters(), lr=1e-5, momentum=0.3)#.9 #1e-6 seemed to give better results but still diverges enough
+optimizer = optim.Adam(network.parameters(), lr=1e-4)
+trained_network, specs = runNet(network, X_train, y_train, X_test, y_test, in_specs)
+
+
+
+
+
 
 
 category_list = ['R2_train', 'R2_test', 'model_type', 'model_architecture', 
@@ -405,8 +352,10 @@ category_list = ['R2_train', 'R2_test', 'model_type', 'model_architecture',
                                       'imputation', ]
 # myoutput_df = pd.DataFrame(columns = category_list)
 new_df = pd.read_csv(r'experiment_results.csv')
-specs = [-.35, -1.11, 'ffn', '3 layers: 500, 51, 1', 10,'Adam, 1e-4', 'blue and green only', 'none', 'none' ]
+# specs = [-.35, -1.11, 'ffn', '3 layers: 500, 51, 1', 10,'Adam, 1e-4', 'blue and green only', 'none', 'none' ]
 res = {category_list[i]: specs[i] for i in range(len(category_list))}
+res = {category_list[i]: specs[i] for i in range(len(category_list))}
+
 new_df = new_df.append(res, ignore_index=True)
 new_df.to_csv(r'experiment_results.csv', index=False)
 
@@ -676,24 +625,23 @@ city_list = [la,dl,tpe]
 test_city_list = [ la_test, dl_test, tpe_test]
 network_list = []
 
-net = Net()
-# net = net.double()
-print(net)
-criterion = nn.MSELoss()
-# optimizer = optim.SGD(net.parameters(), lr=1e-5, momentum=0.3)#.9 #1e-6 seemed to give better results but still diverges enough
-optimizer = optim.Adam(net.parameters(), lr=1e-4)
-
-
 for city, test_city in zip(city_list, test_city_list):
-    X_train = city[cols_to_use]
+    
+    
+    
+
+
+    X_train = city.drop(columns=cols_to_drop)
     y_train = city.pm25
-    X_test = test_city[cols_to_use]
+    X_test = test_city.drop(columns=cols_to_drop)
     y_test = test_city.pm25
     X_train, X_test, y_train, y_test = floatify_data(X_train, X_test, y_train, y_test)
 
 
     scaler = preprocessing.StandardScaler().fit(X_train)
     scaler.mean_.shape
+    X_train = pd.DataFrame(scaler.transform(X_train))
+    X_test = pd.DataFrame(scaler.transform(X_test))
 
     X_train = torch.from_numpy(X_train.values).float()
     X_test = torch.from_numpy(X_test.values).float()
@@ -705,6 +653,14 @@ for city, test_city in zip(city_list, test_city_list):
 
     X_train = X_train.unsqueeze(1).unsqueeze(1)
     X_test = X_test.squeeze(1).squeeze(1)
-    t1, s1 = trained_network, specs = runNet(X_train, y_train, X_test, y_test, in_specs)
+    
+    network = Net(input_shape = X_train.shape[-1])
+    
+    criterion = nn.MSELoss()
+    # optimizer = optim.SGD(net.parameters(), lr=1e-5, momentum=0.3)#.9 #1e-6 seemed to give better results but still diverges enough
+    optimizer = optim.Adam(net.parameters(), lr=1e-4)
+    
+
+    t1, s1 = runNet(network, X_train, y_train, X_test, y_test, in_specs)
     network_list.append(t1)
 
