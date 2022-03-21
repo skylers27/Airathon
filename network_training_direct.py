@@ -204,69 +204,91 @@ full_data1 = calculate_features(train_dict[1], train_labels, stage="train")
 full_data2 = calculate_features(train_dict[2], train_labels, stage="train")
 
 
+
+
 for i in range(1,14):
     if (i == 4): #DROPPING 4TH BAND
         continue
     print(i)
     train_dict_processed[i] = calculate_features(train_dict[i], train_labels, stage="train")
-    val_dict_processed[i] = calculate_features(val_dict[i], train_labels, stage="test")
+    val_dict_processed[i] = calculate_features(val_dict[i], submission_format, stage="test")
    
 # full_data = pd.merge(full_data1, full_data2,  how='inner', left_on=['datetime','grid_id', 'pm25', 'day'], right_on = ['datetime','grid_id', 'pm25', 'day'])
+# all_bands = list(train_dict_processed.values())
 
-all_bands = list(train_dict_processed.values())
+# a = val_dict_processed[8]
 
-b = [0,1,2,3,4,5,7,8,9,10,11] #DROPPING THE 6TH DF (WE ALREADY DROPPED 4 ABOVE)
-all_bands_filtered = [all_bands[i] for i in b]
-
-
-
-mylist = {0: 'blue_band', 1: 'green_band', 2: 'aod_unc', 
-          3: 'column_wv', 4: 'add_qa', 5: 'aod_model', 6:'cos_sza', 
-          7: 'cos_vsa', 8:'rel_az', 9:'scatter_angle', 10: 'glint_angle'}
-
-for k,v in mylist.items():
-    all_bands_filtered[k] = all_bands_filtered[k].rename(columns={col: v + '_'+ col 
-                            for col in all_bands_filtered[k].columns if col not in ['datetime', 'grid_id', 'pm25', 'day']})
-
+# for k,v in val_dict_processed.items():
+#     if 'value' in val_dict_processed[i].columns:
+#         val_dict_processed[i] = val_dict_processed[i].drop(columns='value')
     
-
-# full_data2 = pd.merge(all_bands,  how='inner', left_on=['datetime','grid_id', 'pm25', 'day'], right_on = ['datetime','grid_id', 'pm25', 'day'])
-# full_data3 = pd.concat(full_data1, full_data2,  join='inner', left_on=['datetime','grid_id', 'pm25', 'day'], right_on = ['datetime','grid_id', 'pm25', 'day'])
-
-full_data = reduce(lambda x, y: pd.merge(x, y, how='inner', on = ['datetime','grid_id', 'pm25', 'day']), all_bands_filtered)
-
-#Skyler added features: year, month, day, hour, location (0 = LA, 1 = DL, 2 = TPE)
-full_data["y"] = full_data.datetime.dt.year
-full_data["m"] = full_data.datetime.dt.month
-full_data["d"] = full_data.datetime.dt.day
-full_data["h"] = full_data.datetime.dt.hour
-
-locs = []
-for i in range(full_data.shape[0]):
-    index = grid_md.index.tolist().index(full_data["grid_id"][i])
-    location = grid_md.location.tolist()[index]
-    if location == 'Los Angeles (SoCAB)':
-        locs.append(0)
-    if location == 'Delhi':
-        locs.append(1)
-    if location == 'Taipei':
-        locs.append(2)
-
-full_data["locs"] = locs
-full_data
-
-x_loc = [] #get coordinates of lower left corner
-y_loc = []
-for i in range(full_data.shape[0]):
-    index = grid_md.index.tolist().index(full_data["grid_id"][i]) 
-    x_new = float(grid_md.wkt.tolist()[index].split()[1][2:])
-    x_loc.append(x_new)
-    y_new = float(grid_md.wkt.tolist()[index].split()[2][:-1])
-    y_loc.append(y_new)
     
-full_data["x_loc"] = x_loc
-full_data["y_loc"] = y_loc
+def mergeFeatures(dict_of_processed_features, stage):
+    
+    all_bands = list(dict_of_processed_features.values())
+    
+    b = [0,1,2,3,4,5,7,8,9,10,11] #DROPPING THE 6TH DF (WE ALREADY DROPPED 4 ABOVE)
+    all_bands_filtered = [all_bands[i] for i in b]
+    
+    
+    
+    mylist = {0: 'blue_band', 1: 'green_band', 2: 'aod_unc', 
+              3: 'column_wv', 4: 'add_qa', 5: 'aod_model', 6:'cos_sza', 
+              7: 'cos_vsa', 8:'rel_az', 9:'scatter_angle', 10: 'glint_angle'}
+    
+    for k,v in mylist.items():
+        all_bands_filtered[k] = all_bands_filtered[k].rename(columns={col: v + '_'+ col 
+                                for col in all_bands_filtered[k].columns if col not in ['datetime', 'grid_id', 'pm25', 'day']})
+    
+        
+    
+    # full_data_input2 = pd.merge(all_bands,  how='inner', left_on=['datetime','grid_id', 'pm25', 'day'], right_on = ['datetime','grid_id', 'pm25', 'day'])
+    # full_data_input3 = pd.concat(full_data_input1, full_data_input2,  join='inner', left_on=['datetime','grid_id', 'pm25', 'day'], right_on = ['datetime','grid_id', 'pm25', 'day'])
+    if stage == "train":
+        full_data_input = reduce(lambda x, y: pd.merge(x, y, how='inner', on = ['datetime','grid_id', 'pm25', 'day']), all_bands_filtered)
+    else:
+        full_data_input = reduce(lambda x, y: pd.merge(x, y, how='inner', on = ['datetime','grid_id', 'day']), all_bands_filtered)
+    #Skyler added features: year, month, day, hour, location (0 = LA, 1 = DL, 2 = TPE)
+    full_data_input["y"] = full_data_input.datetime.dt.year
+    full_data_input["m"] = full_data_input.datetime.dt.month
+    full_data_input["d"] = full_data_input.datetime.dt.day
+    full_data_input["h"] = full_data_input.datetime.dt.hour
+    
+    locs = []
+    for i in range(full_data_input.shape[0]):
+        index = grid_md.index.tolist().index(full_data_input["grid_id"][i])
+        location = grid_md.location.tolist()[index]
+        if location == 'Los Angeles (SoCAB)':
+            locs.append(0)
+        if location == 'Delhi':
+            locs.append(1)
+        if location == 'Taipei':
+            locs.append(2)
+    
+    full_data_input["locs"] = locs
+    full_data_input
+    
+    x_loc = [] #get coordinates of lower left corner
+    y_loc = []
+    for i in range(full_data_input.shape[0]):
+        index = grid_md.index.tolist().index(full_data_input["grid_id"][i]) 
+        x_new = float(grid_md.wkt.tolist()[index].split()[1][2:])
+        x_loc.append(x_new)
+        y_new = float(grid_md.wkt.tolist()[index].split()[2][:-1])
+        y_loc.append(y_new)
+        
+    full_data_input["x_loc"] = x_loc
+    full_data_input["y_loc"] = y_loc
+    
+    return full_data_input
+# full_data2 = mergeFeatures(train_dict_processed, "train")
 
+full_data.mean()
+full_data2.mean()
+
+subm_data = mergeFeatures(val_dict_processed, "test")
+subm_data = subm_data[subm_data.columns.drop(list(subm_data.filter(regex='value')))]
+subm_data.mean()
 
 in_specs = dict()
 in_specs['model_type'] = 'ffn'
@@ -303,9 +325,11 @@ train.drop(columns = 'datetimeyy', inplace=True)
 test.drop(columns = 'datetimeyy', inplace=True)
 validation.drop(columns = 'datetimeyy', inplace=True)
 
+######################################################
 train = full_data.copy()
 train.drop(columns = 'datetimeyy', inplace=True)
-
+test = subm_data.copy()
+#######################################################
 
 # print(train2.shape)
 # print(test2.shape)
@@ -327,7 +351,9 @@ new_cols_to_drop = [feat_to_drop + '_' + word for word in suffix_list]
 print(new_cols_to_drop)
 cols_to_drop = new_cols_to_drop + cols_to_drop
 
-
+#######################################
+cols_to_drop.remove("pm25") #***
+########################################
 # def useColumnSubset(train, test, validation, cols_to_drop):
 
 # cols_to_drop = ['datetime', 'grid_id', 'day', 'pm25', 'glint_angle_mean_aod', 'glint_angle_min_aod', 'glint_angle_max_aod', ]
@@ -344,6 +370,8 @@ X_val = validation.drop(columns=cols_to_drop)
 y_val = validation.pm25
 X_val = X_val.astype(np.float64)
 y_val = y_val.astype(np.float64)
+
+X_test = X_test.astype(np.float64)
 
 
 
@@ -416,6 +444,14 @@ with torch.no_grad():
     y_pred = []
     for i in range(X_test.shape[0]):
         y_pred.append(trained_network(X_test[i]).item())
+        
+########################################################################      
+with torch.no_grad():
+    trained_network.eval()
+    y_final_pred = []
+    for i in range(X_test.shape[0]):
+        y_final_pred.append(trained_network(X_test[i]).item())
+#########################################################################
 # print(y_pred[:10])
 # print(mean_squared_error(y_test, y_pred, squared=False))
 print('Testing R2: ' +str(r2_score(y_test, y_pred)))
@@ -497,6 +533,25 @@ submission.head(3)
 
 submission.describe()
 
+
+
+submission_format
+submission_format['value'] = y_final_pred
+submission_format.drop(columns=['value'], inplace=True)
+
+train['pm25'].mean()
+test['pm25'].mean()
+test.columns 
+final_submission.to_csv()
+
+
+lg = pd.read_csv(r'../../submission_format.csv')
+submission_format['datetime'] = lg['datetime']
+submission_format.isna().sum()
+submission_format
+submission_format = submission_format.fillna(train['pm25'].mean())
+submission_format.rename(columns={"preds": "value"}, inplace=True)
+submission_format.to_csv(r'C:\Users\16028\Downloads\nasa_air\starter_code\starter_code\submission_tutorial_3.csv', index=False)
 # Save submission in the correct format
 # =============================================================================
 # final_submission = pd.read_csv(RAW / "submission_format.csv")
@@ -504,10 +559,10 @@ submission.describe()
 # final_submission.to_csv((INTERIM / "submission.csv"), index=False)
 # 
 # =============================================================================
-final_submission = pd.read_csv(r"../../submission_format.csv")
-final_submission["value"] = submission.reset_index().value
-# final_submission.to_csv((INTERIM / "submission.csv"), index=False)
-final_submission.to_csv((r"../../submission_tutorial_1.csv"), index=False)
+# final_submission = pd.read_csv(r"../../submission_format.csv")
+# final_submission["value"] = submission.reset_index().value
+# # final_submission.to_csv((INTERIM / "submission.csv"), index=False)
+# final_submission.to_csv((r"../../submission_tutorial_1.csv"), index=False)
 
 #####################################################################################
 
