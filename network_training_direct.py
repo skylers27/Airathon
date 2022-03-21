@@ -63,6 +63,90 @@ for i in range(1,14):
     train_dict[i] = pd.read_csv(r'C:\Users\16028\Downloads\skyler_processed_data\train' + str(i) + '.csv')
     val_dict[i] = pd.read_csv(r'C:\Users\16028\Downloads\skyler_processed_data\val' + str(i) + '.csv')
     
+    
+    
+
+def runNet(net, X_train_temp, y_train_temp, X_test, y_test, net_specs):
+
+    start = time.time()
+    running_loss = 0.0
+    for epoch in range(NUM_EPOCHS):
+        print('EPOCH: ' + str(epoch))
+        print(running_loss)
+        running_loss = 0.0
+    
+        net.train()
+        for i in range(X_train_temp.shape[0]):
+            # if i % 5000 == 0: print(i)
+            # data[i].unsqueeze(0)
+            inputs = X_train_temp[i]#.unsqueeze(0).unsqueeze(0)
+            #print(X_train_temp[i].unsqueeze(0).unsqueeze(0).shape)
+            target = y_train_temp[i]
+            # zero the parameter gradients
+            optimizer.zero_grad()
+        
+            # forward + backward + optimize
+            outputs = net(inputs)
+            outputs = outputs.squeeze(1).squeeze(1)
+            
+            loss = criterion(outputs, target)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+            
+        print('Time epoch took: ' + str(round(time.time() - start, 2)/60))
+    print('Finished training')
+    
+    end = time.time()
+    print('Time it took in minutes: ' + str(round(end - start,2)/60))
+    print('Number of Epochs: ' + str(NUM_EPOCHS) + ", Minutes per epoch: " + str(round(end - start,2)/60/NUM_EPOCHS))
+    
+    
+    with torch.no_grad():
+        net.eval()
+        y_pred = []
+        for i in range(X_train_temp.shape[0]):
+            y_pred.append(net(X_train_temp[i]).item())
+    # print(y_pred[:10])
+    
+    # mean_absolute_error(y_train, y_pred)
+    # print(mean_squared_error(y_train, y_pred, squared=False))
+    print('Training R2: ' + str(r2_score(y_train, y_pred)))
+    
+    with torch.no_grad():
+        net.eval()
+        y_pred = []
+        for i in range(X_test.shape[0]):
+            y_pred.append(net(X_test[i]).item())
+    # print(y_pred[:10])
+    # print(mean_squared_error(y_test, y_pred, squared=False))
+    print('Testing R2: ' +str(r2_score(y_test, y_pred)))
+    net_specs['R2_train'] = round(r2_score(y_test, y_pred),2)
+    net_specs['R2_test'] = round(r2_score(y_test, y_pred),2)
+    net_specs['duration'] = round(end - start,2)/60
+    net_specs['num_epochs'] = NUM_EPOCHS
+
+    return net, net_specs
+
+class Net(nn.Module):
+    def __init__(self,input_shape, dropout_level=.25):
+        super().__init__()
+        self.drop = nn.Dropout(p=dropout_level)
+        self.fc1 = nn.Linear(input_shape, 400)
+        self.fc2 = nn.Linear(400, 50)
+        self.fc3 = nn.Linear(50,1)
+        # self.fc1 = nn.Linear(10,300)
+        # self.fc2= nn.Linear(300,100)
+        # self.fc3= nn.Linear(100,20)
+        # self.fc4 = nn.Linear(20, 1)
+
+    def forward(self, x):
+        x = self.drop(F.relu(self.fc1(x)))
+        x = self.drop(F.relu(self.fc2(x)))
+        x = self.fc3(x)
+        # x = F.relu(self.fc3(x))
+        # x = self.fc4(x)
+        return x
  
     
 ########################################################################################
@@ -171,6 +255,17 @@ for i in range(full_data.shape[0]):
 full_data["locs"] = locs
 full_data
 
+x_loc = [] #get coordinates of lower left corner
+y_loc = []
+for i in range(full_data.shape[0]):
+    index = grid_md.index.tolist().index(full_data["grid_id"][i]) 
+    x_new = float(grid_md.wkt.tolist()[index].split()[1][2:])
+    x_loc.append(x_new)
+    y_new = float(grid_md.wkt.tolist()[index].split()[2][:-1])
+    y_loc.append(y_new)
+    
+full_data["x_loc"] = x_loc
+full_data["y_loc"] = y_loc
 
 
 in_specs = dict()
@@ -183,7 +278,7 @@ in_specs['imputation'] = 'none'
 
 
 
-
+a = train_dict 
 #####################################################################################
 #####################################################################################
 ##################################################################################
@@ -193,6 +288,28 @@ in_specs['imputation'] = 'none'
 train = full_data[full_data.datetime.dt.year <= 2019].copy()
 test = full_data[full_data.datetime.dt.year > 2019].copy()
 
+full_data.columns
+# train['datetimeyy'] = pd.to_datetime(train['datetime']).dt.tz_localize(None)
+# test['datetimeyy'] = pd.to_datetime(test['datetime']).dt.tz_localize(None)
+# train.columns
+
+full_data['datetimeyy'] = pd.to_datetime(full_data['datetime']).dt.tz_localize(None)
+
+
+train = full_data[full_data.datetimeyy <=  dt.datetime(2020,4,1)]
+validation = full_data[(full_data.datetimeyy > dt.datetime(2020,3,1)) & (full_data.datetimeyy  <= dt.datetime(2020,6,1))]
+test = full_data[full_data.datetimeyy >  dt.datetime(2020,4,1)]
+train.drop(columns = 'datetimeyy', inplace=True)
+test.drop(columns = 'datetimeyy', inplace=True)
+validation.drop(columns = 'datetimeyy', inplace=True)
+
+train = full_data.copy()
+train.drop(columns = 'datetimeyy', inplace=True)
+
+
+# print(train2.shape)
+# print(test2.shape)
+# train = full_data[full_data.datetime]
 
 # one_hot = pd.get_dummies(train['locs'], prefix='city')
 # train = train.drop('locs',axis = 1)
@@ -201,12 +318,20 @@ test = full_data[full_data.datetime.dt.year > 2019].copy()
 # test = test.drop('locs',axis = 1)
 # test = test.join(one_hot)
 
-
-
 # cols_to_use= [ "mean_aod_x", "min_aod_x", "max_aod_x", "mean_aod_y", "min_aod_y", "max_aod_y"] #"y", "m", "d", "h"]
 cols_to_drop = ["datetime", "grid_id", "day", "pm25"]# "locs"]# "y", "m", "d", "h", "locs"]
 
+feat_to_drop = 'scatter_angle'
+suffix_list = ['mean_aod', 'min_aod', 'max_aod']
+new_cols_to_drop = [feat_to_drop + '_' + word for word in suffix_list]
+print(new_cols_to_drop)
+cols_to_drop = new_cols_to_drop + cols_to_drop
 
+
+# def useColumnSubset(train, test, validation, cols_to_drop):
+
+# cols_to_drop = ['datetime', 'grid_id', 'day', 'pm25', 'glint_angle_mean_aod', 'glint_angle_min_aod', 'glint_angle_max_aod', ]
+cols_to_drop
 
 # train_scaled = train[cols_to_use]
 X_train = train.drop(columns=cols_to_drop)
@@ -214,6 +339,12 @@ X_test = test.drop(columns=cols_to_drop)
 y_train = train.pm25
 y_test = test.pm25
 X_train, X_test, y_train, y_test = floatify_data(X_train, X_test, y_train, y_test)
+
+X_val = validation.drop(columns=cols_to_drop)
+y_val = validation.pm25
+X_val = X_val.astype(np.float64)
+y_val = y_val.astype(np.float64)
+
 
 
 categorical_columns = ['city_0', 'city_1', 'city_2']
@@ -225,12 +356,11 @@ scaler.mean_.shape
 X_train = pd.DataFrame(scaler.transform(X_train))
 X_test = pd.DataFrame(scaler.transform(X_test))
 
-
+X_val = pd.DataFrame(scaler.transform(X_val)) 
 
 # ct = ColumnTransformer([
 #         ('ct_name', StandardScaler(), X_train.columns)
 #     ], remainder='passthrough')
-
 
 # X_train = pd.DataFrame(ct.fit_transform(X_train))
 # X_test = pd.DataFrame(ct.transform(X_test))
@@ -246,104 +376,193 @@ y_train = torch.unsqueeze(y_train,dim=1)
 y_test = torch.unsqueeze(y_test,dim=1)
 
 X_train = X_train.unsqueeze(1).unsqueeze(1)
-X_test = X_test.squeeze(1).squeeze(1)
+X_test = X_test.unsqueeze(1).unsqueeze(1)
 
+
+# X_val = torch.from_numpy(X_val.values).float()
+# y_val = torch.from_numpy(y_val.values).float()
+# X_val = torch.unsqueeze(X_val, dim=1)
+# y_val = torch.unsqueeze(1).unsqueeze(1)
 
 ####################################################################################
+model = Net(input_shape = X_train.shape[-1])
 
-# NUM_EPOCHS = 10
+NUM_EPOCHS = 10
 
-def runNet(net, X_train_temp, y_train_temp, X_test, y_test, net_specs):
-
-    start = time.time()
-    running_loss = 0.0
-    for epoch in range(NUM_EPOCHS):
-        print('EPOCH: ' + str(epoch))
-        print(running_loss)
-        running_loss = 0.0
-    
-        net.train()
-        for i in range(X_train_temp.shape[0]):
-            # if i % 5000 == 0: print(i)
-            # data[i].unsqueeze(0)
-            inputs = X_train_temp[i]#.unsqueeze(0).unsqueeze(0)
-            #print(X_train_temp[i].unsqueeze(0).unsqueeze(0).shape)
-            target = y_train_temp[i]
-            # zero the parameter gradients
-            optimizer.zero_grad()
-        
-            # forward + backward + optimize
-            outputs = net(inputs)
-            
-            loss = criterion(outputs, target)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-            
-        print('Time epoch took: ' + str(round(time.time() - start, 2)/60))
-    print('Finished training')
-    
-    end = time.time()
-    print('Time it took in minutes: ' + str(round(end - start,2)/60))
-    print('Number of Epochs: ' + str(NUM_EPOCHS) + ", Minutes per epoch: " + str(round(end - start,2)/60/NUM_EPOCHS))
-    
-    
-    with torch.no_grad():
-        net.eval()
-        y_pred = []
-        for i in range(X_train_temp.shape[0]):
-            y_pred.append(net(X_train_temp[i]).item())
-    # print(y_pred[:10])
-    
-    # mean_absolute_error(y_train, y_pred)
-    # print(mean_squared_error(y_train, y_pred, squared=False))
-    print('Training R2: ' + str(r2_score(y_train, y_pred)))
-    
-    with torch.no_grad():
-        net.eval()
-        y_pred = []
-        for i in range(X_test.shape[0]):
-            y_pred.append(net(X_test[i]).item())
-    # print(y_pred[:10])
-    # print(mean_squared_error(y_test, y_pred, squared=False))
-    print('Testing R2: ' +str(r2_score(y_test, y_pred)))
-    net_specs['R2_train'] = round(r2_score(y_test, y_pred),2)
-    net_specs['R2_test'] = round(r2_score(y_test, y_pred),2)
-    net_specs['duration'] = round(end - start,2)/60
-    net_specs['num_epochs'] = NUM_EPOCHS
-
-    return net, net_specs
-
-class Net(nn.Module):
-    def __init__(self,input_shape):
-        super().__init__()
-        self.drop = nn.Dropout(p=.25)
-        self.fc1 = nn.Linear(input_shape, 400)
-        self.fc2 = nn.Linear(400, 50)
-        self.fc3 = nn.Linear(50,1)
-        # self.fc1 = nn.Linear(10,300)
-        # self.fc2= nn.Linear(300,100)
-        # self.fc3= nn.Linear(100,20)
-        # self.fc4 = nn.Linear(20, 1)
-
-    def forward(self, x):
-        x = self.drop(F.relu(self.fc1(x)))
-        x = self.drop(F.relu(self.fc2(x)))
-        x = self.fc3(x)
-        # x = F.relu(self.fc3(x))
-        # x = self.fc4(x)
-        return x
 
 network = Net(input_shape = X_train.shape[-1])
 print(network)
 criterion = nn.MSELoss()
-# optimizer = optim.SGD(net.parameters(), lr=1e-5, momentum=0.3)#.9 #1e-6 seemed to give better results but still diverges enough
-optimizer = optim.Adam(network.parameters(), lr=1e-4)
+network = Net(input_shape = X_train.shape[-1], dropout_level=.25)
+optimizer = optim.Adam(network.parameters(), lr=1e-4, weight_decay=1e-3)
 trained_network, specs = runNet(network, X_train, y_train, X_test, y_test, in_specs)
 
 
 
+    
+with torch.no_grad():
+    trained_network.eval()
+    y_pred = []
+    for i in range(X_train.shape[0]):
+        y_pred.append(trained_network(X_train[i]).item())
+# print(y_pred[:10])
 
+# mean_absolute_error(y_train, y_pred)
+# print(mean_squared_error(y_train, y_pred, squared=False))
+print('Training R2: ' + str(r2_score(y_train, y_pred)))
+
+with torch.no_grad():
+    trained_network.eval()
+    y_pred = []
+    for i in range(X_test.shape[0]):
+        y_pred.append(trained_network(X_test[i]).item())
+# print(y_pred[:10])
+# print(mean_squared_error(y_test, y_pred, squared=False))
+print('Testing R2: ' +str(r2_score(y_test, y_pred)))
+#okay so weight decacy 1e-4 is pretty good
+
+
+# Identify test granule s3 paths
+test_md = pm_md[(pm_md["product"] == "maiac") & (pm_md["split"] == "test")]
+
+# Identify test grid cells
+submission_format = pd.read_csv(r"../../submission_format.csv", parse_dates=["datetime"]) #***
+# submission_format = pd.read_csv(RAW / "submission_format.csv", parse_dates=["datetime"])
+test_gc = grid_md[grid_md.index.isin(submission_format.grid_id)]
+# Process test data for each location
+locations = test_gc.location.unique()
+loc_map = {"Delhi": "dl", "Los Angeles (SoCAB)": "la", "Taipei": "tpe"}
+
+loc_dfs1 = []
+loc_dfs2 = []
+
+
+test_df1 = val_dict[1].copy()
+test_df2 = val_dict[2].copy()
+
+test_df1.head(3)
+
+# Prepare AOD features, only do once per kernel execution
+submission_df1 = calculate_features(test_df1, submission_format, stage="test")
+submission_df2 = calculate_features(test_df2, submission_format, stage="test")
+
+# Impute missing features using training set mean/max/min
+submission_df1.mean_aod.fillna(train_dict[1].value.mean(), inplace=True)
+submission_df1.min_aod.fillna(train_dict[1].value.min(), inplace=True)
+submission_df1.max_aod.fillna(train_dict[1].value.max(), inplace=True)
+submission_df1.drop(columns=["day"], inplace=True)
+
+submission_df2.mean_aod.fillna(train_dict[2].value.mean(), inplace=True)
+submission_df2.min_aod.fillna(train_dict[2].value.min(), inplace=True)
+submission_df2.max_aod.fillna(train_dict[2].value.max(), inplace=True)
+submission_df2.drop(columns=["day"], inplace=True)
+
+print(submission_df1.shape)
+print(submission_df2.shape)
+
+submission_df = pd.merge(submission_df1, submission_df2,  how='inner', left_on=['datetime','grid_id', 'value'], right_on = ['datetime','grid_id', 'value'])
+print(submission_df.shape)
+print(submission_df)
+
+#add same features as training here:
+submission_df["y"] = submission_df.datetime.dt.year
+submission_df["m"] = submission_df.datetime.dt.month
+submission_df["d"] = submission_df.datetime.dt.day
+submission_df["h"] = submission_df.datetime.dt.hour
+
+locs = []
+for i in range(submission_df.shape[0]):
+    index = grid_md.index.tolist().index(submission_df["grid_id"][i])
+    location = grid_md.location.tolist()[index]
+    if location == 'Los Angeles (SoCAB)':
+        locs.append(0)
+    if location == 'Delhi':
+        locs.append(1)
+    if location == 'Taipei':
+        locs.append(2)
+
+submission_df["locs"] = locs
+
+# Make predictions using AOD features
+submission_df["preds"] = model.predict(submission_df[["mean_aod_x", "min_aod_x", "max_aod_x", "mean_aod_y", "min_aod_y", "max_aod_y", "y", "m", "d", "h", "locs"]])
+submission = submission_df[["datetime", "grid_id", "preds"]].copy()
+submission.rename(columns={"preds": "value"}, inplace=True)
+
+# Ensure submission indices match submission format
+submission_format.set_index(["datetime", "grid_id"], inplace=True)
+submission.set_index(["datetime", "grid_id"], inplace=True)
+assert submission_format.index.equals(submission.index)
+
+submission.head(3)
+
+submission.describe()
+
+# Save submission in the correct format
+# =============================================================================
+# final_submission = pd.read_csv(RAW / "submission_format.csv")
+# final_submission["value"] = submission.reset_index().value
+# final_submission.to_csv((INTERIM / "submission.csv"), index=False)
+# 
+# =============================================================================
+final_submission = pd.read_csv(r"../../submission_format.csv")
+final_submission["value"] = submission.reset_index().value
+# final_submission.to_csv((INTERIM / "submission.csv"), index=False)
+final_submission.to_csv((r"../../submission_tutorial_1.csv"), index=False)
+
+#####################################################################################
+
+
+
+class Dataset(torch.utils.data.Dataset):
+
+    def __init__(self, df):
+        self.labels = [0 if label == 0 else 1 for label in df['HeartDisease']]
+        self.features = df.drop(columns=['HeartDisease'], axis=1).values.tolist()
+
+    def classes(self):
+        return self.labels
+
+    def __len__(self):
+        return len(self.labels)
+
+    def get_batch_labels(self, idx):
+        return np.array(self.labels[idx])
+
+    def get_batch_features(self, idx):
+        return np.array(self.features[idx])
+
+    def __getitem__(self, idx):
+        batch_features = self.get_batch_features(idx)
+        batch_y = self.get_batch_labels(idx)
+
+        return batch_features, batch_y
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+network = Net(input_shape = X_train.shape[-1])
+optimizer = optim.Adam(network.parameters(), lr=1e-4, weight_decay = 1e-3)
+trained_network, specs = runNet(network, X_train, y_train, X_test, y_test, in_specs)
+
+network = Net(input_shape = X_train.shape[-1], .40)
+optimizer = optim.Adam(network.parameters(), lr=1e-4)
+trained_network, specs = runNet(network, X_train, y_train, X_test, y_test, in_specs)
 
 
 
