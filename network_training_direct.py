@@ -458,9 +458,14 @@ network = Net(input_shape = X_train.shape[-1], dropout_level=.25)
 optimizer = optim.Adam(network.parameters(), lr=1e-4, weight_decay=1e-3)
 trained_network, specs = runNet(network, X_train, y_train, X_test, y_test, in_specs)
 
+print(trained_network)
 
+# =============================================================================
+# MODEL_PATH = r'C:\Users\16028\Downloads\nasa_air\starter_code\starter_code\joint_folder\Airathon\final_model.pt'
+# torch.save(trained_network.state_dict(), MODEL_PATH)
+# 
+# =============================================================================
 
-    
 with torch.no_grad():
     trained_network.eval()
     y_pred = []
