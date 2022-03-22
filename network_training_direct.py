@@ -200,9 +200,32 @@ def calculate_features(
     )
     return full_data
 
-full_data1 = calculate_features(train_dict[1], train_labels, stage="train")
-full_data2 = calculate_features(train_dict[2], train_labels, stage="train")
+# full_data1 = calculate_features(train_dict[1], train_labels, stage="train")
+# full_data2 = calculate_features(train_dict[2], train_labels, stage="train")
 
+test.isna().sum()
+
+test.shape
+test2 = test.copy()
+
+col_ignore_list = ['datetime', 'grid_id', 'day', 'y', 'm', 'd', 'h', 'locs', 'x_loc', 'y_loc']
+for col in test.columns:
+    if col not in col_ignore_list:
+    # test2[col] = test2.groupby("grid_id").transform(lambda x: x.fillna(x.mean()))[col]
+    # df['value'] = df['value'].fillna(df.groupby('name')['value'].transform('mean'))
+        test[col] = test[col].fillna(test.groupby('grid_id')[col].transform('mean'))
+    # test2[col] 
+
+for col in test.columns:
+    if col not in col_ignore_list:
+    # test2[col] = test2.groupby("grid_id").transform(lambda x: x.fillna(x.mean()))[col]
+    # df['value'] = df['value'].fillna(df.groupby('name')['value'].transform('mean'))
+        test[col] = test[col].fillna(test[col].mean())
+    # test2[col] 
+
+
+for col in test.columns
+test2.columns
 
 
 
@@ -362,6 +385,16 @@ cols_to_drop
 # train_scaled = train[cols_to_use]
 X_train = train.drop(columns=cols_to_drop)
 X_test = test.drop(columns=cols_to_drop)
+
+X_train.isna().sum()
+X_test.isna().sum()
+
+
+X_train['pm25']
+
+X_test.shape
+
+
 y_train = train.pm25
 y_test = test.pm25
 X_train, X_test, y_train, y_test = floatify_data(X_train, X_test, y_train, y_test)
@@ -461,8 +494,6 @@ print('Testing R2: ' +str(r2_score(y_test, y_pred)))
 # Identify test granule s3 paths
 test_md = pm_md[(pm_md["product"] == "maiac") & (pm_md["split"] == "test")]
 
-# Identify test grid cells
-submission_format = pd.read_csv(r"../../submission_format.csv", parse_dates=["datetime"]) #***
 # submission_format = pd.read_csv(RAW / "submission_format.csv", parse_dates=["datetime"])
 test_gc = grid_md[grid_md.index.isin(submission_format.grid_id)]
 # Process test data for each location
@@ -535,9 +566,8 @@ submission.describe()
 
 
 
+
 submission_format
-submission_format['value'] = y_final_pred
-submission_format.drop(columns=['value'], inplace=True)
 
 train['pm25'].mean()
 test['pm25'].mean()
@@ -545,14 +575,27 @@ test.columns
 final_submission.to_csv()
 
 
+
+submission_format['preds_2'] = subm
+ag = train.groupby(['grid_id'])['pm25'].mean()
+
+ag2 = ag.to_dict()
+# Identify test grid cells
+submission_format = pd.read_csv(r"../../submission_format.csv", parse_dates=["datetime"]) #***
+submission_format['value'] = y_final_pred
+submission_format.isna().sum()
+
 lg = pd.read_csv(r'../../submission_format.csv')
 submission_format['datetime'] = lg['datetime']
 submission_format.isna().sum()
 submission_format
-submission_format = submission_format.fillna(train['pm25'].mean())
-submission_format.rename(columns={"preds": "value"}, inplace=True)
-submission_format.to_csv(r'C:\Users\16028\Downloads\nasa_air\starter_code\starter_code\submission_tutorial_3.csv', index=False)
+submission_format['value'] = submission_format['value'].fillna(train['pm25'].mean())
+# submission_format['value'] = submission_format['value'].fillna(train['grid_id'].map(ag2))# (df.A.map(dict))
+# submission_format.rename(columns={"preds": "value"}, inplace=True)
+submission_format.to_csv(r'C:\Users\16028\Downloads\nasa_air\starter_code\starter_code\submission_tutorial_6.csv', index=False)
 # Save submission in the correct format
+
+submission_format['value'].nunique()
 # =============================================================================
 # final_submission = pd.read_csv(RAW / "submission_format.csv")
 # final_submission["value"] = submission.reset_index().value
